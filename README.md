@@ -1,6 +1,6 @@
 # star-proof
 
-Monte Carlo simulations using star-engine code.
+Monte Carlo simulations using the star-engine code from Méso Star.
 
 ## Prerequesites
 
