@@ -35,16 +35,16 @@
 #include <star/s3daw.h>
 #include <star/smc.h>
 
-#include "s4vs_realization.h"
+#include "model_problem_realization.h"
 
 static res_T
-compute_4v_s
+compute_model_problem
   (struct s3d_scene* scene,
    const size_t max_realisations,
    const double ks)
 {
   char dump[64];
-  struct s4vs_context ctx;
+  struct model_problem_context ctx;
   struct s3d_scene_view* view = NULL;
   struct smc_device* smc = NULL;
   struct smc_integrator integrator;
@@ -81,7 +81,7 @@ compute_4v_s
 
   /* Setup Star-MC */
   SMC(device_create(NULL, NULL, SMC_NTHREADS_DEFAULT, NULL, &smc));
-  integrator.integrand = &s4vs_realization; /* Realization function */
+  integrator.integrand = &model_problem_realization; /* Realization function */
   integrator.type = &smc_double; /* Type of the Monte Carlo weight */
   integrator.max_realisations = max_realisations; /* Realization count */
   integrator.max_failures = max_realisations / 1000;
@@ -142,7 +142,7 @@ import_obj(const char* filename, struct s3d_scene** out_scene)
   FOR_EACH(ishape, 0, nshapes) {
     struct s3d_shape* shape;
     CALL(s3daw_get_shape(s3daw, ishape, &shape));
-    CALL(s3d_mesh_set_hit_filter_function(shape, s4vs_discard_self_hit, NULL));
+    CALL(s3d_mesh_set_hit_filter_function(shape, model_problem_discard_self_hit, NULL));
     CALL(s3d_scene_attach_shape(scene, shape));
   }
   #undef CALL
@@ -207,7 +207,7 @@ main(int argc, char* argv[])
     }
   }
 
-  res = compute_4v_s(scene, nrealisations, ks);
+  res = compute_model_problem(scene, nrealisations, ks);
   if(res != RES_OK) {
     fprintf(stderr, "Error in 4V/S integration\n");
     goto error;

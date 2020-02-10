@@ -32,13 +32,13 @@
 #include <star/ssp.h>
 #include <star/smc.h>
 
-#include "s4vs_realization.h"
+#include "model_problem_realization.h"
 
 /*******************************************************************************
  * Helper function
  ******************************************************************************/
 int
-s4vs_discard_self_hit
+model_problem_discard_self_hit
   (const struct s3d_hit* hit,
    const float ray_org[3],
    const float ray_dir[3],
@@ -56,10 +56,10 @@ s4vs_discard_self_hit
  * 4V/S integrand
  ******************************************************************************/
 res_T
-s4vs_realization
+model_problem_realization
   (void* out_length, struct ssp_rng* rng, const unsigned ithread, void* context)
 {
-  struct s4vs_context* ctx = (struct s4vs_context*)context;
+  struct model_problem_context* ctx = (struct model_problem_context*)context;
   struct s3d_attrib attrib;
   struct s3d_primitive prim;
   double sample[3];

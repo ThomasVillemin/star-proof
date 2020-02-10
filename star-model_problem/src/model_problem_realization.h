@@ -26,15 +26,15 @@
  * The fact that you are presently reading this means that you have had
  * knowledge of the CeCILL license and that you accept its terms. */
 
-#ifndef S4V_S_REALIZATION_H
-#define S4V_S_REALIZATION_H
+#ifndef MODEL_PROBLEM_REALIZATION_H
+#define MODEL_PROBLEM_REALIZATION_H
 
 #include <rsys/rsys.h>
 
 /* forward definition */
 struct ssp_rng;
 
-struct s4vs_context {
+struct model_problem_context {
   struct s3d_scene_view* view;
   double ks;
   double g;
@@ -42,7 +42,7 @@ struct s4vs_context {
 
 /* Hit filter function used to handle auto intersection */
 extern int
-s4vs_discard_self_hit
+model_problem_discard_self_hit
   (const struct s3d_hit* hit,
    const float ray_org[3],
    const float ray_dir[3],
@@ -53,7 +53,7 @@ s4vs_discard_self_hit
  * MC realization function
  ******************************************************************************/
 extern res_T
-s4vs_realization
+model_problem_realization
   (void* length,
    struct ssp_rng* rng,
    const unsigned ithread,
