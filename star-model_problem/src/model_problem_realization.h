@@ -31,13 +31,27 @@
 
 #include <rsys/rsys.h>
 
+
+/* Dimensions of the solid */
+#define WIDTH 10.0
+#define LENGTH 10.0
+#define HEIGHT 10.0
+
+/* Moving step for ramdom walk inside solid */
+#define MOVING_STEP 0.1
+#define REJECTION_STEP 0.1
+
 /* forward definition */
 struct ssp_rng;
 
 struct model_problem_context {
   struct s3d_scene_view* view;
-  double ks;
-  double g;
+
+  /* Declarations of the properties */
+  float lambda;
+  float h_rad;
+  float T1; /* imposed temperature on the surface */
+  float T2; /* imposed temperature of the environment (radiative transfer) */
 };
 
 /* Hit filter function used to handle auto intersection */
@@ -58,5 +72,8 @@ model_problem_realization
    struct ssp_rng* rng,
    const unsigned ithread,
    void* context);
+
+
+extern double compute_step(double a, double b, double c);
 
 #endif /* REALIZATION_H */

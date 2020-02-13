@@ -52,8 +52,25 @@ model_problem_discard_self_hit
   return prim_from ? S3D_PRIMITIVE_EQ(prim_from, &hit->prim) : 0;
 }
 
+
 /*******************************************************************************
- * 4V/S integrand
+ * function to compute the moving step without epsilon wall
+ ******************************************************************************/
+double compute_step(double a, double b, double  c) {
+  double result = a;
+  if (b <= a) {
+    result = b;
+  }
+  if (c < result) {
+    result = c;
+  }
+
+  return result;
+}
+
+
+/*******************************************************************************
+ * model_problem integrand
  ******************************************************************************/
 res_T
 model_problem_realization
@@ -68,15 +85,41 @@ model_problem_realization
   const float range[2] = {0.f, FLT_MAX};
   struct s3d_hit hit;
   double w = 0;
-  double sigma = 0;
+  /* double sigma = 0; */
   int keep_running = 0;
   float r0, r1, r2;
+
+  int i;
+  float r;
+
+  double delta, delta_u, delta_minus_u;
+
+  float u2[3]; /* x2[3], st2[2]; */
+  struct s3d_primitive prim2;
+  const float range2[2] = {0.f, FLT_MAX};
+  struct s3d_hit hit2;
+
+  double delta_solid = MOVING_STEP; /* moving step */
+  double delta_rejection = REJECTION_STEP;
+
+  /* Definitions of the probabilities */
+  double h_cond = (double) (ctx->lambda)*2;
+  double Pcond_cond = (double) (h_cond/(h_cond + ctx->h_rad));
+  /* double Pcond_rad = (double) (ctx->h_rad/(h_cond + ctx->h_rad)); */
+
+
+
   (void)ithread; /* Avoid "unused variable" warning */
 
-  /* Sample a surface location, i.e. primitive ID and parametric coordinates */
-  r0 = ssp_rng_canonical_float(rng);
-  r1 = ssp_rng_canonical_float(rng);
-  r2 = ssp_rng_canonical_float(rng);
+
+
+  /* select a point on the upper surface */
+   r0 = ssp_rng_canonical_float(rng); 
+   r1 = ssp_rng_canonical_float(rng); 
+   r2 = ssp_rng_canonical_float(rng); 
+  /* r0 = 5.0; */
+  /* r1 = 5.0; */
+  /* r2 = 10.0; */
   S3D(scene_view_sample(ctx->view, r0, r1, r2, &prim, st));
 
   /* retrieve the sampled geometric normal and position */
@@ -85,39 +128,65 @@ model_problem_realization
   S3D(primitive_get_attrib(&prim, S3D_POSITION, st, &attrib));
   f3_set(x, attrib.value);
 
-  /* Cosine weighted sampling of the hemisphere around the sampled normal */
-  ssp_ran_hemisphere_cos(rng, normal, sample, NULL);
-  f3_set_d3(u, sample);
 
-  /* Find the 1st hit from the sampled location along the sampled direction */
-  S3D(scene_view_trace_ray(ctx->view, x, u, range, &prim, &hit));
-
-  /* No intersection <=> numerical imprecision or geometry leakage */
-  if(S3D_HIT_NONE(&hit)) return RES_UNKNOWN_ERR;
-
+  /* Walk on Sphere inside the solid and coupling with radiative tranfer at the upper surface */
   keep_running = 1;
-  while(keep_running) { /* Here we go for the diffuse random walk */
+  while(keep_running) { /* Here we go */
 
-    /* Sample a length according to ks */
-    sigma = ssp_ran_exp(rng, ctx->ks);
+    /* Three possble cases:  1) In the volume: Conduction with random walk
+                             2) On the upper surface: rejection in conduction or (radiation => T2)
+                             3) On the lateral surfaces or lower surface => T1 */
 
-    if(sigma < hit.distance) {
-      int i;
-      FOR_EACH(i, 0, 3) x[i] = x[i] + (float)sigma*u[i];
-      d3_normalize(sample, d3_set_f3(sample, u));
-      f3_set_d3(u, ssp_ran_sphere_hg(rng, sample, ctx->g, sample, NULL));
 
-      /* sample a new direction */
-      S3D(scene_view_trace_ray(ctx->view, x, u, range, NULL, &hit));
+    if (x[2] == HEIGHT && x[1] > 0 && x[1] < LENGTH && x[0] > 0 && x[0] < WIDTH) {
+      /* We are on the upper surface and not on the boundaries */
 
-      w = w + sigma;
+      r = ssp_rng_canonical_float(rng);
 
-      /* No intersection <=> numerical imprecision or geometry leakage */
-      if(S3D_HIT_NONE(&hit)) return RES_UNKNOWN_ERR;
+      if (r < Pcond_cond) {
+        /* Conduction: rejection in the volume of the cube */
 
-    } else { /* Stop the random walk */
-      w = w + hit.distance;
+        S3D(scene_view_sample(ctx->view, x[0], x[1], x[2], &prim, st)); /* NEED CHANGE */
+
+        /* retrieve the sampled geometric normal and position */
+        S3D(primitive_get_attrib(&prim, S3D_GEOMETRY_NORMAL, st, &attrib));
+        d3_normalize(normal, d3_set_f3(normal, attrib.value));
+        FOR_EACH(i, 0, 3) normal[i] = -normal[i]; /* pointing toward the sky */
+        FOR_EACH(i, 0, 3) x[i] = x[i] - (float)delta_rejection*normal[i];
+
+
+      } else {
+        /* Radiative transfer: temperature of the sphere T2 */
+
+        w = w + ctx->T2;
+        keep_running = 0;
+      }
+
+    } else if (x[1] == 0 || x[1] == LENGTH || x[2] == 0 || x[0] == 0 || x[0] == WIDTH) {
+      /* We are at the known temperature of the cube T1 */
+
+      w = w + ctx->T1;
       keep_running = 0;
+
+    } else {
+      /* Random walk in the cube */
+
+      f3_set_d3(u, ssp_ran_sphere_uniform(rng, sample, NULL));
+
+
+      /* To avoid the epsilon parameter at the boundaries */
+      FOR_EACH(i, 0, 3) u2[i] = -u[i];
+
+      S3D(scene_view_trace_ray(ctx->view, x, u, range, &prim, &hit));
+      S3D(scene_view_trace_ray(ctx->view, x, u2, range2, &prim2, &hit2));
+      if(S3D_HIT_NONE(&hit) || S3D_HIT_NONE(&hit2)) { return RES_UNKNOWN_ERR;}
+
+      delta_u = (float) hit.distance;
+      delta_minus_u = (float) hit2.distance;
+      delta = compute_step(delta_solid, delta_u, delta_minus_u);
+
+      FOR_EACH(i, 0, 3) x[i] = x[i] + (float)delta*u[i];
+
     }
   }
 

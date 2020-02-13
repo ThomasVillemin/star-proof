@@ -38,10 +38,7 @@
 #include "model_problem_realization.h"
 
 static res_T
-compute_model_problem
-  (struct s3d_scene* scene,
-   const size_t max_realisations,
-   const double ks)
+compute_model_problem(struct s3d_scene* scene, const size_t max_realisations)
 {
   char dump[64];
   struct model_problem_context ctx;
@@ -51,33 +48,19 @@ compute_model_problem
   struct smc_estimator* estimator = NULL;
   struct smc_estimator_status estimator_status;
   struct time t0, t1;
-  float S, V, reference;
+
   res_T res = RES_OK;
-  ASSERT(scene && max_realisations > 0 && ks >= 0);
+  ASSERT(scene && max_realisations > 0);
 
   S3D(scene_view_create(scene, S3D_SAMPLE|S3D_TRACE, &view));
 
-  /* Compute the expected result using a mesh-based method */
-  S3D(scene_view_compute_area(view, &S));
-  S3D(scene_view_compute_volume(view, &V));
-  if(eq_epsf(S, 0, 1.e-6f) || S < 0) {
-    fprintf(stderr, "No surface to sample. Is the scene empty?\n");
-    res = RES_BAD_ARG;
-    goto error;
-  }
-  if(eq_epsf(V, 0, 1.e-6f) || V < 0) {
-    fprintf(stderr,
-      "Invalid volume \"%.2f\". The scene might not match the prerequisites:\n"
-      "it must be closed and its normals must point *into* the volume.\n", V);
-    res = RES_BAD_ARG;
-    goto error;
-  }
-  reference = 4*V/S;
 
   /* Initialize context for MC computation */
   ctx.view = view;
-  ctx.ks = ks;
-  ctx.g = PI/4.0;
+  ctx.lambda = 1;
+  ctx.h_rad = 10;
+  ctx.T1 = 25;
+  ctx.T2 = 40;
 
   /* Setup Star-MC */
   SMC(device_create(NULL, NULL, SMC_NTHREADS_DEFAULT, NULL, &smc));
@@ -87,6 +70,7 @@ compute_model_problem
   integrator.max_failures = max_realisations / 1000;
 
   /* Solve */
+  printf("Start simulation from upper surface\n");
   time_current(&t0);
   SMC(solve(smc, &integrator, &ctx, &estimator));
   time_sub(&t0, time_current(&t1), &t0);
@@ -103,8 +87,7 @@ compute_model_problem
 	    (unsigned long)estimator_status.NF);
     goto error;
   }
-  printf("4V/S = %g ~ %g +/- %g\n#failures = %lu/%lu\n",
-	 reference,
+  printf("Estimated temperature = %g +/- %g\n#failures = %lu/%lu\n",
    SMC_DOUBLE(estimator_status.E),
    SMC_DOUBLE(estimator_status.SE),
 	 (unsigned long)estimator_status.NF,
@@ -168,13 +151,12 @@ main(int argc, char* argv[])
   struct s3d_scene* scene = NULL;
   struct time t0, t1;
   unsigned long nrealisations = 10000;
-  double ks = 0.0;
   res_T res = RES_OK;
   int err = 0;
 
   /* Check command arguments */
-  if(argc < 2 || argc > 4) {
-    printf("Usage: %s OBJ_FILE [SAMPLES_COUNT [K_SCATTERING]]\n", argv[0]);
+  if(argc < 1 || argc > 3) {
+    printf("Usage: %s OBJ_FILE [SAMPLES_COUNT]\n", argv[0]);
     goto error;
   }
 
@@ -198,18 +180,9 @@ main(int argc, char* argv[])
     }
   }
 
-  /* Set ks */
-  if(argc >= 4) {
-    res = cstr_to_double(argv[3], &ks);
-    if(res != RES_OK || ks < 0) {
-      fprintf(stderr, "Invalid k-scattering value `%s'\n", argv[3]);
-      goto error;
-    }
-  }
-
-  res = compute_model_problem(scene, nrealisations, ks);
+  res = compute_model_problem(scene, nrealisations);
   if(res != RES_OK) {
-    fprintf(stderr, "Error in 4V/S integration\n");
+    fprintf(stderr, "Error in model_problem integration\n");
     goto error;
   }
 
